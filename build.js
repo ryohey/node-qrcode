@@ -1,4 +1,5 @@
-var spawn = require('child_process').spawn
+var browserify = require('browserify')
+var uglify = require('uglify-js')
 var fs = require('fs')
 
 var q = [
@@ -11,46 +12,33 @@ var q = [
   },
 
   function () {
-    var browserify = spawn('node', [
-      'node_modules/.bin/browserify',
-      'lib/index.js',
-      '-s', 'qrcodelib',
-      '-d',
-      '-o', 'build/qrcode.js'
-    ])
-
-    browserify.stdin.end()
-    browserify.stdout.pipe(process.stdout)
-    browserify.stderr.pipe(process.stderr)
-    browserify.on('exit', function (code) {
-      if (code) {
-        console.error('browserify failed!')
-        process.exit(code)
+    browserify('lib/index.js', {
+      standalone: 'qrcodelib',
+      debug: true
+    })
+    .bundle(function (err, buf) {
+      if (err) {
+        console.error('browserify failed!', err.message)
+        process.exit(1)
       }
+      fs.writeFileSync('build/qrcode.js', buf)
       done()
     })
   },
 
   function () {
-    var uglify = spawn('node', [
-      'node_modules/.bin/uglifyjs',
-      '--compress', '--mangle',
-      '--source-map', 'build/qrcode.min.js.map',
-      '--source-map-url', 'qrcode.min.js.map',
-      '--', 'build/qrcode.js'])
-
-    var minStream = fs.createWriteStream('build/qrcode.min.js')
-    uglify.stdout.pipe(minStream)
-    uglify.stdin.end()
-    uglify.on('exit', function (code) {
-      if (code) {
-        console.error('uglify failed!')
-        fs.unlink('build/qrcode.min.js', function () {
-          process.exit(code)
-        })
-      }
-      done()
-    })
+    try {
+      var result = uglify.minify(['build/qrcode.js'], {
+        outSourceMap: 'qrcode.min.js.map'
+      })
+      fs.writeFileSync('build/qrcode.min.js', result.code)
+      fs.writeFileSync('build/qrcode.min.js.map', result.map)
+    } catch (e) {
+      console.error('uglify failed!', e.message)
+      fs.unlink('build/qrcode.min.js', function () {
+        process.exit(1)
+      })
+    }
   }
 ]
 
